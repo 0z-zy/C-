@@ -113,6 +113,10 @@ namespace OLED_Customizer.Services
             await PostAsync("/remove_game", new { game = GAME });
         }
 
+        public async Task BindGameEventAsync()
+        {
+            var dummy128x40 = new byte[640];
+            
             var handlers = new List<object>
             {
                 new Dictionary<string, object>
