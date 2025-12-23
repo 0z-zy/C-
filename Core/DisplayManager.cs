@@ -70,8 +70,7 @@ namespace OLED_Customizer.Core
                     // 1. Hardware Monitor (Priority)
                     if (_config.DisplayHwMonitor) 
                     {
-                        // TODO: Render HW stats
-                        // frame = RenderHwStats();
+                         frame = RenderHwStats();
                     }
 
                     // 2. Media
@@ -99,7 +98,14 @@ namespace OLED_Customizer.Core
                     if (frame != null)
                     {
                         var data = ImageUtils.ToSteelSeriesFormat(frame);
-                        await _steelSeries.SendFrameAsync(data);
+                        
+                        // Only send if changed
+                        if (_lastFrameData == null || !ArraysEqual(_lastFrameData, data)) // need to impl ArraysEqual or use SequenceEqual
+                        {
+                             await _steelSeries.SendFrameAsync(data);
+                             _lastFrameData = data;
+                        }
+                        
                         frame.Dispose();
                     }
                 }
@@ -112,6 +118,40 @@ namespace OLED_Customizer.Core
             }
         }
 
+        private byte[]? _lastFrameData;
+        private bool ArraysEqual(byte[] a, byte[] b)
+        {
+            if (a.Length != b.Length) return false;
+            for(int i=0; i<a.Length; i++) if(a[i]!=b[i]) return false;
+            return true;
+        }
+
+        private Bitmap RenderHwStats()
+        {
+            // Simple text rendering for HW Stats
+            var (cpuTemp, cpuLoad, gpuTemp, gpuLoad, ramLoad) = _hwMonitor.GetStats();
+            
+            var bmp = new Bitmap(128, 40);
+            using (var g = Graphics.FromImage(bmp))
+            {
+                g.Clear(Color.Black);
+                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.SingleBitPerPixelGridFit;
+                
+                // Font for stats - small
+                using (var font = new Font("Arial", 8))
+                using (var brush = new SolidBrush(Color.White))
+                {
+                    string cpu = $"CPU: {(int)(cpuLoad ?? 0)}% {(int)(cpuTemp ?? 0)}C";
+                    string gpu = $"GPU: {(int)(gpuLoad ?? 0)}% {(int)(gpuTemp ?? 0)}C";
+                    string ram = $"RAM: {(int)(ramLoad ?? 0)}%";
+                    
+                    g.DrawString(cpu, font, brush, 0, 0);
+                    g.DrawString(gpu, font, brush, 0, 12);
+                    g.DrawString(ram, font, brush, 0, 24);
+                }
+            }
+            return bmp;
+        }
         private Bitmap RenderMedia(MediaInfo media)
         {
             // Simple scrolling text for now

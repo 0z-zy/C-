@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using System.Windows.Forms;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -10,9 +11,23 @@ namespace OLED_Customizer
 {
     static class Program
     {
+        static Mutex? _mutex;
+
         [STAThread]
         static void Main()
         {
+            const string appName = "Global\\OLED_Customizer_Unique_ID";
+            bool createdNew;
+
+            _mutex = new Mutex(true, appName, out createdNew);
+
+            if (!createdNew)
+            {
+                // Already running
+                MessageBox.Show("OLED Customizer is already running!", "OLED Customizer", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
             Application.SetHighDpiMode(HighDpiMode.SystemAware);
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);

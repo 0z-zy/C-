@@ -1,7 +1,15 @@
-# .NET
-bin/
-obj/
+# Build results
+[Bb]in/
+[Oo]bj/
+
+# Executables
+*.exe
+*.pdb
+Publish/
+
+# VS
 .vs/
+
 *.user
 *.suo
 
