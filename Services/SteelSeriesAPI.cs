@@ -37,7 +37,7 @@ namespace OLED_Customizer.Services
             var corePropsPaths = new[]
             {
                 Path.Combine(programData, "SteelSeries", "SteelSeries Engine 3", "coreProps.json"),
-                Path.Combine(programData, "SteelSeries", "SteelSeries GG", "coreProps.json")
+                Path.Combine(programData, "SteelSeries", "GG", "coreProps.json")
             };
 
             string? corePropsFile = null;
@@ -98,12 +98,12 @@ namespace OLED_Customizer.Services
 
         public async Task RegisterGameAsync()
         {
-            var data = new
+            var data = new Dictionary<string, object>
             {
-                game = GAME,
-                game_display_name = GAMESENSE_DISPLAY_NAME,
-                developer = AUTHOR,
-                deinitialize_timer_length_ms = 60000
+                { "game", GAME },
+                { "game_display_name", GAMESENSE_DISPLAY_NAME },
+                { "developer", AUTHOR },
+                { "deinitialize_timer_length_ms", 60000 }
             };
             await PostAsync("/game_metadata", data);
         }
@@ -113,22 +113,21 @@ namespace OLED_Customizer.Services
             await PostAsync("/remove_game", new { game = GAME });
         }
 
-        public async Task BindGameEventAsync()
-        {
-            var dummy128x40 = new byte[640]; // 128x40 bit depth 1? No, usually byte per pixel or packed. Checking original... original uses list of ints, likely 0 or 1 for mono, or 0-255. 
-            // Original: dummy_128x40 = [0 for _ in range(640)] -> 128*40 is 5120 pixels.
-            // Wait, 128x40 = 5120 pixels. 640 bytes? 5120 / 8 = 640 bytes. So it's packed bits.
-            // Original sends [0...640] as image-data.
-            
-            var handlers = new[]
+            var handlers = new List<object>
             {
-                new
+                new Dictionary<string, object>
                 {
-                    device_type = "screened-128x40",
-                    mode = "screen",
-                    datas = new[]
-                    {
-                        new { has_text = false, image_data = dummy128x40 }
+                    { "device-type", "screened-128x40" },
+                    { "mode", "screen" },
+                    { "zone", "one" },
+                    { "datas", new[] 
+                        {
+                            new Dictionary<string, object> 
+                            { 
+                                { "has-text", false }, 
+                                { "image-data", dummy128x40 } 
+                            }
+                        } 
                     }
                 }
             };
@@ -137,7 +136,9 @@ namespace OLED_Customizer.Services
             {
                 game = GAME,
                 @event = EVENT,
-                value_optional = true,
+                min_value = 0,
+                max_value = 1,
+                icon_id = 1,
                 handlers = handlers
             };
             

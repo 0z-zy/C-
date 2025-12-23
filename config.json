@@ -1,0 +1,24 @@
+{
+  "Fps": 10,
+  "SpotifyFetchDelay": 250,
+  "RgbEnabled": true,
+  "RgbColor": [
+    255,
+    255,
+    255
+  ],
+  "DisplayClock": true,
+  "DisplayPlayer": true,
+  "DisplayHwMonitor": false,
+  "ClockStyle": "Standard",
+  "DisplaySeconds": true,
+  "UseTurkishDays": true,
+  "SpotifyClientId": "",
+  "SpotifyClientSecret": "",
+  "SpotifyRedirectUri": "http://localhost:8888/callback",
+  "LocalPort": 2408,
+  "ScrollbarPadding": 2,
+  "TextPaddingLeft": 30,
+  "HotkeyMonitor": "",
+  "HotkeyMute": ""
+}
