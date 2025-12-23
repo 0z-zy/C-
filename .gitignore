@@ -1,0 +1,9 @@
+# .NET
+bin/
+obj/
+.vs/
+*.user
+*.suo
+
+# Python Repo (Cloned for reference)
+OLED_Customizer_Python/
