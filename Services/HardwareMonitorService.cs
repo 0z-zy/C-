@@ -36,7 +36,7 @@ namespace OLED_Customizer.Services
             }
         }
 
-        public (float? cpuTemp, float? cpuLoad, float? gpuTemp, float? gpuLoad, float? ramLoad) GetStats()
+        public (float? cpuTemp, float? cpuLoad, float? gpuTemp, float? gpuLoad, float? ramUsed, float? ramAvailable) GetStats()
         {
             try
             {
@@ -46,23 +46,23 @@ namespace OLED_Customizer.Services
                 float? cpuLoad = null;
                 float? gpuTemp = null;
                 float? gpuLoad = null;
-                float? ramLoad = null;
+                float? ramUsed = null;
+                float? ramAvailable = null;
 
                 foreach (var hardware in _computer.Hardware)
                 {
                     if (hardware.HardwareType == HardwareType.Cpu)
                     {
-                        hardware.Update(); // Force update? Visitor should handle it.
-                        // CPU Load
+                        hardware.Update(); 
                         var load = hardware.Sensors.FirstOrDefault(s => s.SensorType == SensorType.Load && s.Name == "CPU Total");
                         if (load != null) cpuLoad = load.Value;
 
-                        // CPU Temp (Package or average)
-                        var temp = hardware.Sensors.FirstOrDefault(s => s.SensorType == SensorType.Temperature && s.Name.Contains("Package")) 
+                        var temp = hardware.Sensors.FirstOrDefault(s => s.SensorType == SensorType.Temperature && s.Name.Contains("Tctl"))
+                                   ?? hardware.Sensors.FirstOrDefault(s => s.SensorType == SensorType.Temperature && s.Name.Contains("Package")) 
                                    ?? hardware.Sensors.FirstOrDefault(s => s.SensorType == SensorType.Temperature);
                         if (temp != null) cpuTemp = temp.Value;
                     }
-                    else if (hardware.HardwareType == HardwareType.GpuNvidia || hardware.HardwareType == HardwareType.GpuAmd)
+                    else if (hardware.HardwareType == HardwareType.GpuNvidia || hardware.HardwareType == HardwareType.GpuAmd || hardware.HardwareType == HardwareType.GpuIntel)
                     {
                         hardware.Update();
                         var load = hardware.Sensors.FirstOrDefault(s => s.SensorType == SensorType.Load && s.Name == "GPU Core");
@@ -74,17 +74,19 @@ namespace OLED_Customizer.Services
                     else if (hardware.HardwareType == HardwareType.Memory)
                     {
                          hardware.Update();
-                         var load = hardware.Sensors.FirstOrDefault(s => s.SensorType == SensorType.Load && s.Name == "Memory");
-                         if (load != null) ramLoad = load.Value;
+                         var used = hardware.Sensors.FirstOrDefault(s => s.SensorType == SensorType.Data && s.Name == "Memory Used");
+                         var avail = hardware.Sensors.FirstOrDefault(s => s.SensorType == SensorType.Data && s.Name == "Memory Available");
+                         
+                         if (used != null) ramUsed = used.Value;
+                         if (avail != null) ramAvailable = avail.Value;
                     }
                 }
 
-                return (cpuTemp, cpuLoad, gpuTemp, gpuLoad, ramLoad);
+                return (cpuTemp, cpuLoad, gpuTemp, gpuLoad, ramUsed, ramAvailable);
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-               // _logger.LogWarning($"HW Monitor Error: {ex.Message}");
-                return (null, null, null, null, null);
+                return (null, null, null, null, null, null);
             }
         }
 

@@ -1,7 +1,7 @@
 {
   "Fps": 10,
   "SpotifyFetchDelay": 250,
-  "RgbEnabled": true,
+  "RgbEnabled": false,
   "RgbColor": [
     255,
     255,
@@ -10,7 +10,7 @@
   "DisplayClock": true,
   "DisplayPlayer": true,
   "DisplayHwMonitor": false,
-  "ClockStyle": "Standard",
+  "ClockStyle": "Big Timer",
   "DisplaySeconds": true,
   "UseTurkishDays": true,
   "SpotifyClientId": "",

@@ -1,5 +1,7 @@
 using System;
 using System.Drawing;
+using System.Drawing.Text;
+using System.Linq; // For SequenceEqual
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -16,36 +18,48 @@ namespace OLED_Customizer.Core
         private readonly HardwareMonitorService _hwMonitor;
         private readonly MediaService _mediaService;
         
+        // Renderers & Receivers
         private readonly ClockRenderer _clockRenderer;
+        private readonly ExtensionReceiver _extensionReceiver;
+        private readonly HardwareRenderer _hwRenderer;
         private readonly Utils.TextRenderer _textRenderer;
-        
+
         private bool _running;
         private Task? _loopTask;
 
         // State
+        private byte[]? _lastFrameData;
         private DateTime _lastMediaActionTime = DateTime.MinValue;
         private string _lastTitle = "";
         private int _scrollOffset = 0;
         
+        private long _lastExtensionDataMs = 0;
+        private const int EXTENSION_LOCK_MS = 5000;
+
         public DisplayManager(
             ILogger<DisplayManager> logger,
+            AppConfig config,
             SteelSeriesAPI steelSeries,
             HardwareMonitorService hwMonitor,
             MediaService mediaService)
         {
             _logger = logger;
+            _config = config;
             _steelSeries = steelSeries;
             _hwMonitor = hwMonitor;
             _mediaService = mediaService;
             
-            _config = new AppConfig(); // TODO: Inject or Load
             _clockRenderer = new ClockRenderer();
-            _textRenderer = new Utils.TextRenderer(fontSize: 12);
+            _textRenderer = new Utils.TextRenderer(fontSize: 10);
+            _hwRenderer = new HardwareRenderer(_config);
+            _extensionReceiver = new ExtensionReceiver(LoggerFactory.Create(b => b.AddConsole()).CreateLogger<ExtensionReceiver>());
         }
 
         public void Start()
         {
+            if (_running) return;
             _running = true;
+            _extensionReceiver.Start();
             _loopTask = Task.Run(LoopAsync);
         }
 
@@ -53,11 +67,12 @@ namespace OLED_Customizer.Core
         {
             _running = false;
             _loopTask?.Wait(1000);
+            _hwRenderer.Dispose();
         }
 
         private async Task LoopAsync()
         {
-            _logger.LogInformation("Display Manager setup...");
+            _logger.LogInformation("Display Manager loop starting...");
             await _steelSeries.InitializeAsync();
             await _mediaService.InitializeAsync();
 
@@ -67,40 +82,44 @@ namespace OLED_Customizer.Core
                 {
                     Bitmap? frame = null;
 
-                    // 1. Hardware Monitor (Priority)
+                    // 1. Hardware Monitor
                     if (_config.DisplayHwMonitor) 
                     {
                          frame = RenderHwStats();
                     }
 
-                    // 2. Media
+                    // 2. Media (Extension > SMTC)
                     if (frame == null && _config.DisplayPlayer)
                     {
-                        var media = await _mediaService.GetCurrentMediaInfoAsync();
-                        if (media != null && !media.Paused)
+                        var (title, artist, progress, duration, isPlaying) = await GetMediaDataAsync();
+                        
+                        if (!string.IsNullOrEmpty(title))
                         {
-                            _lastMediaActionTime = DateTime.Now;
-                            frame = RenderMedia(media);
-                        }
-                        else if (media != null && media.Paused && (DateTime.Now - _lastMediaActionTime).TotalSeconds < 5)
-                        {
-                            // Keep showing for a few seconds after pause
-                            frame = RenderMedia(media); 
+                            if (isPlaying)
+                            {
+                                _lastMediaActionTime = DateTime.Now;
+                                frame = RenderMedia(title, artist, progress, duration);
+                            }
+                            else if ((DateTime.Now - _lastMediaActionTime).TotalSeconds < 5)
+                            {
+                                // Show paused for 5 seconds
+                                frame = RenderMedia(title, artist, progress, duration);
+                            }
                         }
                     }
 
-                    // 3. Clock (Default)
+                    // 3. Clock
                     if (frame == null && _config.DisplayClock)
                     {
-                        frame = _clockRenderer.Render(DateTime.Now);
+                        frame = _clockRenderer.Render(_config);
                     }
 
                     if (frame != null)
                     {
                         var data = ImageUtils.ToSteelSeriesFormat(frame);
                         
-                        // Only send if changed
-                        if (_lastFrameData == null || !ArraysEqual(_lastFrameData, data)) // need to impl ArraysEqual or use SequenceEqual
+                        // Diffing
+                        if (_lastFrameData == null || !data.SequenceEqual(_lastFrameData))
                         {
                              await _steelSeries.SendFrameAsync(data);
                              _lastFrameData = data;
@@ -114,63 +133,111 @@ namespace OLED_Customizer.Core
                     _logger.LogError(ex, "Render loop error");
                 }
 
-                await Task.Delay(1000 / _config.Fps);
+                int delay = 1000 / Math.Max(1, _config.Fps);
+                await Task.Delay(delay);
             }
         }
 
-        private byte[]? _lastFrameData;
-        private bool ArraysEqual(byte[] a, byte[] b)
+        private async Task<(string title, string artist, double progress, double duration, bool isPlaying)> GetMediaDataAsync()
         {
-            if (a.Length != b.Length) return false;
-            for(int i=0; i<a.Length; i++) if(a[i]!=b[i]) return false;
-            return true;
+            // A. Extension
+            var extData = _extensionReceiver.GetLatestData();
+            if (extData != null)
+            {
+                _lastExtensionDataMs = DateTimeOffset.Now.ToUnixTimeMilliseconds();
+                string t = extData.ContainsKey("title") ? extData["title"]?.ToString() ?? "" : "";
+                string a = extData.ContainsKey("artist") ? extData["artist"]?.ToString() ?? "" : "";
+                
+                double p = 0, d = 0;
+                if (extData.ContainsKey("progress")) double.TryParse(extData["progress"]?.ToString(), out p);
+                if (extData.ContainsKey("duration")) double.TryParse(extData["duration"]?.ToString(), out d);
+                
+                bool playing = false;
+                if (extData.ContainsKey("playing")) bool.TryParse(extData["playing"]?.ToString(), out playing);
+
+                return (t, a, p, d, playing);
+            }
+
+            // B. SMTC Fallback
+            if (DateTimeOffset.Now.ToUnixTimeMilliseconds() - _lastExtensionDataMs > EXTENSION_LOCK_MS)
+            {
+                var media = await _mediaService.GetCurrentMediaInfoAsync();
+                if (media != null)
+                {
+                    return (media.Title, media.Artist, media.Position / 1000.0, media.Duration / 1000.0, !media.Paused);
+                }
+            }
+            
+            return ("", "", 0, 0, false);
         }
 
         private Bitmap RenderHwStats()
         {
-            // Simple text rendering for HW Stats
-            var (cpuTemp, cpuLoad, gpuTemp, gpuLoad, ramLoad) = _hwMonitor.GetStats();
+            var (cpuTemp, cpuLoad, gpuTemp, gpuLoad, ramUsed, ramAvail) = _hwMonitor.GetStats();
+            // Calculate total RAM for Python-like display (Used / Total)
+            // LHM gives used/available. Total = Used + Available.
+            float ramTotal = (ramUsed ?? 0) + (ramAvail ?? 0);
+            if (ramTotal < 1) ramTotal = 32; // Fallback
             
+            return _hwRenderer.Render(cpuTemp, cpuLoad, gpuTemp, gpuLoad, ramUsed, ramTotal);
+        }
+        
+        private Bitmap RenderMedia(string title, string artist, double progressSec, double durationSec)
+        {
             var bmp = new Bitmap(128, 40);
             using (var g = Graphics.FromImage(bmp))
             {
                 g.Clear(Color.Black);
-                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.SingleBitPerPixelGridFit;
+                g.TextRenderingHint = TextRenderingHint.SingleBitPerPixelGridFit;
                 
-                // Font for stats - small
-                using (var font = new Font("Arial", 8))
-                using (var brush = new SolidBrush(Color.White))
+                // Construct text
+                string line1 = title;
+                string line2 = artist;
+                
+                // Load font (use helper or simple default)
+                // Python uses "VerdanaBold" 11px for stats, but what for media?
+                // Probably smaller or same. Let's use generic Sans Serif 8ish.
+                using var font = new Font("Verdana", 8); // System Font
+                using var brush = new SolidBrush(Color.White);
+
+                // Scrolling logic for Line 1 (Title)
+                // Python logic: "text = artist - title". Scrolled.
+                // But Python DisplayManager.py line 400: `player.update_song(...)`. 
+                // `SpotifyPlayer.py` renders it. Let's check visual if needed.
+                // Assuming standard 2-line or scrolling 1-line.
+                // Let's implement scrolling 1-line for now as per previous C# impl but better.
+                
+                string fullText = $"{artist} - {title}";
+                var size = g.MeasureString(fullText, font);
+                
+                if (fullText != _lastTitle)
                 {
-                    string cpu = $"CPU: {(int)(cpuLoad ?? 0)}% {(int)(cpuTemp ?? 0)}C";
-                    string gpu = $"GPU: {(int)(gpuLoad ?? 0)}% {(int)(gpuTemp ?? 0)}C";
-                    string ram = $"RAM: {(int)(ramLoad ?? 0)}%";
-                    
-                    g.DrawString(cpu, font, brush, 0, 0);
-                    g.DrawString(gpu, font, brush, 0, 12);
-                    g.DrawString(ram, font, brush, 0, 24);
+                    _scrollOffset = 0;
+                    _lastTitle = fullText;
                 }
+                
+                if (size.Width > 128)
+                {
+                    _scrollOffset -= 2; // scroll left
+                    if (Math.Abs(_scrollOffset) > size.Width) _scrollOffset = 128;
+                }
+                else
+                {
+                    _scrollOffset = (128 - (int)size.Width) / 2; // center if fits
+                }
+                
+                g.DrawString(fullText, font, brush, _scrollOffset, 0);
+
+                // Progress Bar
+                if (durationSec > 0)
+                {
+                    int barWidth = (int)((progressSec / durationSec) * 128);
+                    g.FillRectangle(brush, 0, 35, barWidth, 5);
+                }
+                
+                // Time Text (e.g. 1:23 / 3:45) - Python draws it?
             }
             return bmp;
-        }
-        private Bitmap RenderMedia(MediaInfo media)
-        {
-            // Simple scrolling text for now
-            string text = $"{media.Artist} - {media.Title}   ";
-            
-            // Scroll logic
-            if (text != _lastTitle)
-            {
-                _scrollOffset = 0;
-                _lastTitle = text;
-            }
-            else
-            {
-                _scrollOffset += 2; // rough scrolling speed
-                int width = _textRenderer.MeasureWidth(text);
-                if (_scrollOffset > width) _scrollOffset = -128; // loop
-            }
-
-            return _textRenderer.RenderText(text, 128, 40, _scrollOffset);
         }
     }
 }
