@@ -131,11 +131,17 @@ namespace OLED_Customizer.Core
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Render loop error");
+                    DebugLog($"Render Loop Checkpoint Error: {ex.Message} \nStack: {ex.StackTrace}");
                 }
 
                 int delay = 1000 / Math.Max(1, _config.Fps);
                 await Task.Delay(delay);
             }
+        }
+
+        private void DebugLog(string msg)
+        {
+            try { System.IO.File.AppendAllText("debug.log", $"{DateTime.Now}: {msg}\n"); } catch {}
         }
 
         private long _lastMediaPollMs = 0;

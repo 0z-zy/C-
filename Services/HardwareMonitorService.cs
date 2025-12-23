@@ -1,5 +1,7 @@
 using System;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using LibreHardwareMonitor.Hardware;
 using Microsoft.Extensions.Logging;
 
@@ -10,6 +12,10 @@ namespace OLED_Customizer.Services
         private readonly ILogger<HardwareMonitorService> _logger;
         private readonly Computer _computer;
         private readonly UpdateVisitor _updateVisitor;
+        
+        // Cache
+        private (float? cpuTemp, float? cpuLoad, float? gpuTemp, float? gpuLoad, float? ramUsed, float? ramAvailable) _cachedStats;
+        private readonly CancellationTokenSource _cts = new CancellationTokenSource();
 
         public HardwareMonitorService(ILogger<HardwareMonitorService> logger)
         {
@@ -21,33 +27,45 @@ namespace OLED_Customizer.Services
                 IsGpuEnabled = true,
                 IsMemoryEnabled = true,
                 IsMotherboardEnabled = true,
-                IsControllerEnabled = true,
-                IsNetworkEnabled = true,
-                IsStorageEnabled = true
+                IsControllerEnabled = true, 
+                IsNetworkEnabled = false,
+                IsStorageEnabled = false
             };
 
             try
             {
                 _computer.Open();
+                // Start Update Loop
+                Task.Run(() => UpdateLoop(_cts.Token));
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to open Hardware Monitor (Admin rights might be required)");
+                _logger.LogError(ex, "Failed to open Hardware Monitor");
             }
         }
 
-        public (float? cpuTemp, float? cpuLoad, float? gpuTemp, float? gpuLoad, float? ramUsed, float? ramAvailable) GetStats()
+        private async Task UpdateLoop(CancellationToken token)
+        {
+            while (!token.IsCancellationRequested)
+            {
+                try
+                {
+                    UpdateStats();
+                }
+                catch { }
+                await Task.Delay(1000, token); // Update every 1s
+            }
+        }
+
+        private void UpdateStats()
         {
             try
             {
                 _computer.Accept(_updateVisitor);
 
-                float? cpuTemp = null;
-                float? cpuLoad = null;
-                float? gpuTemp = null;
-                float? gpuLoad = null;
-                float? ramUsed = null;
-                float? ramAvailable = null;
+                float? cpuTemp = null, cpuLoad = null;
+                float? gpuTemp = null, gpuLoad = null;
+                float? ramUsed = null, ramAvailable = null;
 
                 foreach (var hardware in _computer.Hardware)
                 {
@@ -82,16 +100,22 @@ namespace OLED_Customizer.Services
                     }
                 }
 
-                return (cpuTemp, cpuLoad, gpuTemp, gpuLoad, ramUsed, ramAvailable);
+                _cachedStats = (cpuTemp, cpuLoad, gpuTemp, gpuLoad, ramUsed, ramAvailable);
             }
             catch (Exception)
             {
-                return (null, null, null, null, null, null);
+                // Ignore transient errors
             }
+        }
+
+        public (float? cpuTemp, float? cpuLoad, float? gpuTemp, float? gpuLoad, float? ramUsed, float? ramAvailable) GetStats()
+        {
+            return _cachedStats;
         }
 
         public void Dispose()
         {
+            _cts.Cancel();
             _computer.Close();
         }
 
