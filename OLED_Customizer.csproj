@@ -7,7 +7,7 @@
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationIcon>icon.ico</ApplicationIcon>
-    <DefaultItemExcludes>$(DefaultItemExcludes);Pytocs_Experiment\**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);Pytocs_Experiment\**;OLED_Customizer_Python\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>

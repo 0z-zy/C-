@@ -16,11 +16,14 @@ namespace OLED_Customizer.Services
         private float _lastVol = -1;
         private bool _lastMute = false;
 
+        private (float volume, bool isMute, bool isMicMute) _cachedState = (0, false, false);
+
         public VolumeService(ILogger<VolumeService> logger)
         {
             _logger = logger;
             _enumerator = new MMDeviceEnumerator();
             Initialize();
+            UpdateCache();
         }
 
         private void Initialize()
@@ -40,6 +43,8 @@ namespace OLED_Customizer.Services
             {
                 // Mic (Communications Default)
                 _mic = _enumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Communications);
+                // Note: NAudio's VolumeNotification only works for Render devices reliably in some versions,
+                // but we can poll Mic mute specifically if needed.
             }
             catch (Exception ex)
             {
@@ -49,11 +54,11 @@ namespace OLED_Customizer.Services
 
         private void AudioEndpointVolume_OnVolumeNotification(AudioVolumeNotificationData data)
         {
-            // Trigger event
+            UpdateCache();
             OnVolumeChanged?.Invoke(this, EventArgs.Empty);
         }
 
-        public (float volume, bool isMute, bool isMicMute) GetVolumeState()
+        private void UpdateCache()
         {
             float vol = 0;
             bool mute = false;
@@ -66,7 +71,7 @@ namespace OLED_Customizer.Services
                     vol = _speaker.AudioEndpointVolume.MasterVolumeLevelScalar * 100;
                     mute = _speaker.AudioEndpointVolume.Mute;
                 }
-                catch { } // Device might be invalidated
+                catch { } 
             }
 
             if (_mic != null)
@@ -78,7 +83,12 @@ namespace OLED_Customizer.Services
                 catch { }
             }
 
-            return (vol, mute, micMute);
+            _cachedState = (vol, mute, micMute);
+        }
+
+        public (float volume, bool isMute, bool isMicMute) GetVolumeState()
+        {
+            return _cachedState;
         }
 
         public void ToggleMicMute()

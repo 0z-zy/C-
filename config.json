@@ -10,7 +10,7 @@
   "DisplayClock": true,
   "DisplayPlayer": true,
   "DisplayHwMonitor": false,
-  "ClockStyle": "Date Focused",
+  "ClockStyle": "Standard",
   "DisplaySeconds": true,
   "UseTurkishDays": true,
   "SpotifyClientId": "",
