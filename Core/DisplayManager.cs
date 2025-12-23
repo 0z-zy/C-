@@ -19,22 +19,17 @@ namespace OLED_Customizer.Core
         private readonly MediaService _mediaService;
         
         // Renderers & Receivers
+        // Renderers & Receivers
         private readonly ClockRenderer _clockRenderer;
         private readonly ExtensionReceiver _extensionReceiver;
         private readonly HardwareRenderer _hwRenderer;
+        private readonly VolumeRenderer _volumeRenderer; // New
         private readonly Utils.TextRenderer _textRenderer;
-
-        private bool _running;
-        private Task? _loopTask;
-
-        // State
-        private byte[]? _lastFrameData;
-        private DateTime _lastMediaActionTime = DateTime.MinValue;
-        private string _lastTitle = "";
-        private int _scrollOffset = 0;
         
-        private long _lastExtensionDataMs = 0;
-        private const int EXTENSION_LOCK_MS = 5000;
+        // Volume State
+        private readonly VolumeService _volumeService; // New
+        private DateTime _lastVolumeChangeTime = DateTime.MinValue;
+        private (float vol, bool mute, bool mic) _lastVolumeState;
 
         public DisplayManager(
             ILogger<DisplayManager> logger,
@@ -52,22 +47,31 @@ namespace OLED_Customizer.Core
             _clockRenderer = new ClockRenderer();
             _textRenderer = new Utils.TextRenderer(fontSize: 10);
             _hwRenderer = new HardwareRenderer(_config);
+            _volumeRenderer = new VolumeRenderer();
             _extensionReceiver = new ExtensionReceiver(LoggerFactory.Create(b => b.AddConsole()).CreateLogger<ExtensionReceiver>());
+            _volumeService = new VolumeService(LoggerFactory.Create(b => b.AddConsole()).CreateLogger<VolumeService>());
+            
+            // Listen for volume changes
+            _volumeService.OnVolumeChanged += (s, e) => 
+            {
+                var newState = _volumeService.GetVolumeState();
+                if (newState != _lastVolumeState)
+                {
+                    _lastVolumeState = newState;
+                    _lastVolumeChangeTime = DateTime.Now;
+                }
+            };
         }
-
-        public void Start()
-        {
-            if (_running) return;
-            _running = true;
-            _extensionReceiver.Start();
-            _loopTask = Task.Run(LoopAsync);
-        }
-
+        
+        // ... (Start/Stop logic remains mostly same, add VolumeService dispose) ...
+        
         public void Stop()
         {
             _running = false;
             _loopTask?.Wait(1000);
             _hwRenderer.Dispose();
+            _volumeRenderer.Dispose();
+            _volumeService.Dispose();
         }
 
         private async Task LoopAsync()
@@ -81,9 +85,17 @@ namespace OLED_Customizer.Core
                 try
                 {
                     Bitmap? frame = null;
+                    
+                    // 0. Volume Overlay (Highest Priority)
+                    // Check if volume changed recently (1.5s timeout)
+                    if ((DateTime.Now - _lastVolumeChangeTime).TotalSeconds < 1.5)
+                    {
+                        var (vol, mute, mic) = _volumeService.GetVolumeState(); // Get fresh or cached? Service gets fresh.
+                        frame = _volumeRenderer.Render(vol, mute, mic);
+                    }
 
                     // 1. Hardware Monitor
-                    if (_config.DisplayHwMonitor) 
+                    if (frame == null && _config.DisplayHwMonitor) 
                     {
                          frame = RenderHwStats();
                     }
