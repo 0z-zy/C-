@@ -138,34 +138,57 @@ namespace OLED_Customizer.Core
             }
         }
 
+        private long _lastMediaPollMs = 0;
+        private (string, string, double, double, bool) _cachedMediaData = ("", "", 0, 0, false);
+
         private async Task<(string title, string artist, double progress, double duration, bool isPlaying)> GetMediaDataAsync()
         {
-            // A. Extension
-            var extData = _extensionReceiver.GetLatestData();
-            if (extData != null)
+            try
             {
-                _lastExtensionDataMs = DateTimeOffset.Now.ToUnixTimeMilliseconds();
-                string t = extData.ContainsKey("title") ? extData["title"]?.ToString() ?? "" : "";
-                string a = extData.ContainsKey("artist") ? extData["artist"]?.ToString() ?? "" : "";
-                
-                double p = 0, d = 0;
-                if (extData.ContainsKey("progress")) double.TryParse(extData["progress"]?.ToString(), out p);
-                if (extData.ContainsKey("duration")) double.TryParse(extData["duration"]?.ToString(), out d);
-                
-                bool playing = false;
-                if (extData.ContainsKey("playing")) bool.TryParse(extData["playing"]?.ToString(), out playing);
+                long now = DateTimeOffset.Now.ToUnixTimeMilliseconds();
 
-                return (t, a, p, d, playing);
-            }
-
-            // B. SMTC Fallback
-            if (DateTimeOffset.Now.ToUnixTimeMilliseconds() - _lastExtensionDataMs > EXTENSION_LOCK_MS)
-            {
-                var media = await _mediaService.GetCurrentMediaInfoAsync();
-                if (media != null)
+                // A. Extension (Fast, always check)
+                var extData = _extensionReceiver.GetLatestData();
+                if (extData != null)
                 {
-                    return (media.Title, media.Artist, media.Position / 1000.0, media.Duration / 1000.0, !media.Paused);
+                    _lastExtensionDataMs = now;
+                    string t = extData.ContainsKey("title") ? extData["title"]?.ToString() ?? "" : "";
+                    string a = extData.ContainsKey("artist") ? extData["artist"]?.ToString() ?? "" : "";
+                    
+                    double p = 0, d = 0;
+                    if (extData.ContainsKey("progress")) double.TryParse(extData["progress"]?.ToString(), out p);
+                    if (extData.ContainsKey("duration")) double.TryParse(extData["duration"]?.ToString(), out d);
+                    
+                    bool playing = false;
+                    if (extData.ContainsKey("playing")) bool.TryParse(extData["playing"]?.ToString(), out playing);
+                    
+                    // Reset SMTC cache if extension is active
+                    _cachedMediaData = (t, a, p, d, playing);
+                    return _cachedMediaData;
                 }
+
+                // B. SMTC Fallback (Poll throttled)
+                if (now - _lastExtensionDataMs > EXTENSION_LOCK_MS)
+                {
+                     // Only poll SMTC every 500ms to allow smooth rendering of other things
+                     if (now - _lastMediaPollMs > 500)
+                     {
+                        _lastMediaPollMs = now;
+                        var media = await _mediaService.GetCurrentMediaInfoAsync();
+                        if (media != null)
+                        {
+                            _cachedMediaData = (media.Title, media.Artist, media.Position / 1000.0, media.Duration / 1000.0, !media.Paused);
+                        }
+                     }
+                     
+                     // If playing, simulate progress locally for smooth bar?
+                     // For now just return cached
+                     return _cachedMediaData;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning($"Media Poll Error: {ex.Message}");
             }
             
             return ("", "", 0, 0, false);

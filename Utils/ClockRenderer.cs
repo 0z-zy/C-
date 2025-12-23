@@ -26,18 +26,19 @@ namespace OLED_Customizer.Utils
             {
                 _pfc.AddFontFile(fontPath);
                 var family = _pfc.Families[0];
-                _fontDigiBig = new Font(family, 24, FontStyle.Regular, GraphicsUnit.Pixel);
-                _fontDigiMed = new Font(family, 20, FontStyle.Regular, GraphicsUnit.Pixel);
-                _fontDigiSmall = new Font(family, 14, FontStyle.Regular, GraphicsUnit.Pixel);
-                _fontHuge = new Font(family, 38, FontStyle.Regular, GraphicsUnit.Pixel);
+                // Reduced sizes to fit 128x40 better
+                _fontDigiBig = new Font(family, 22, FontStyle.Regular, GraphicsUnit.Pixel);
+                _fontDigiMed = new Font(family, 18, FontStyle.Regular, GraphicsUnit.Pixel);
+                _fontDigiSmall = new Font(family, 12, FontStyle.Regular, GraphicsUnit.Pixel);
+                _fontHuge = new Font(family, 32, FontStyle.Regular, GraphicsUnit.Pixel);
             }
             else
             {
                 // Fallback
-                _fontDigiBig = new Font("Arial", 24, FontStyle.Bold, GraphicsUnit.Pixel);
-                _fontDigiMed = new Font("Arial", 20, FontStyle.Bold, GraphicsUnit.Pixel);
-                _fontDigiSmall = new Font("Arial", 14, FontStyle.Regular, GraphicsUnit.Pixel);
-                _fontHuge = new Font("Arial", 38, FontStyle.Bold, GraphicsUnit.Pixel);
+                _fontDigiBig = new Font("Arial", 22, FontStyle.Bold, GraphicsUnit.Pixel);
+                _fontDigiMed = new Font("Arial", 18, FontStyle.Bold, GraphicsUnit.Pixel);
+                _fontDigiSmall = new Font("Arial", 12, FontStyle.Regular, GraphicsUnit.Pixel);
+                _fontHuge = new Font("Arial", 32, FontStyle.Bold, GraphicsUnit.Pixel);
             }
         }
 
