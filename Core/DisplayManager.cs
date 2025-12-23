@@ -31,6 +31,16 @@ namespace OLED_Customizer.Core
         private DateTime _lastVolumeChangeTime = DateTime.MinValue;
         private (float vol, bool mute, bool mic) _lastVolumeState;
 
+        // System State
+        private bool _running;
+        private Task? _loopTask;
+        private byte[]? _lastFrameData;
+        private DateTime _lastMediaActionTime = DateTime.MinValue;
+        private string _lastTitle = "";
+        private int _scrollOffset = 0;
+        private long _lastExtensionDataMs = 0;
+        private const int EXTENSION_LOCK_MS = 5000;
+
         public DisplayManager(
             ILogger<DisplayManager> logger,
             AppConfig config,
@@ -63,7 +73,13 @@ namespace OLED_Customizer.Core
             };
         }
         
-        // ... (Start/Stop logic remains mostly same, add VolumeService dispose) ...
+        public void Start()
+        {
+            if (_running) return;
+            _running = true;
+            _extensionReceiver.Start();
+            _loopTask = Task.Run(LoopAsync);
+        }
         
         public void Stop()
         {
