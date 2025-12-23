@@ -1,16 +1,48 @@
-namespace OLED_Customizer;
+using System;
+using System.Windows.Forms;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using OLED_Customizer.Core;
+using OLED_Customizer.Services;
+using OLED_Customizer.UI;
 
-static class Program
+namespace OLED_Customizer
 {
-    /// <summary>
-    ///  The main entry point for the application.
-    /// </summary>
-    [STAThread]
-    static void Main()
+    static class Program
     {
-        // To customize application configuration such as set high DPI settings or default font,
-        // see https://aka.ms/applicationconfiguration.
-        ApplicationConfiguration.Initialize();
-        Application.Run(new Form1());
-    }    
+        [STAThread]
+        static void Main()
+        {
+            Application.SetHighDpiMode(HighDpiMode.SystemAware);
+            Application.EnableVisualStyles();
+            Application.SetCompatibleTextRenderingDefault(false);
+
+            var services = new ServiceCollection();
+            ConfigureServices(services);
+
+            using (var serviceProvider = services.BuildServiceProvider())
+            {
+                var trayContext = serviceProvider.GetRequiredService<TrayContext>();
+                Application.Run(trayContext);
+            }
+        }
+
+        private static void ConfigureServices(ServiceCollection services)
+        {
+            services.AddLogging(configure => 
+            {
+                configure.AddConsole();
+                configure.AddDebug();
+            });
+
+            services.AddSingleton<AppConfig>(provider => AppConfig.Load("config.json"));
+            
+            services.AddSingleton<SteelSeriesAPI>();
+            services.AddSingleton<HardwareMonitorService>();
+            services.AddSingleton<MediaService>();
+            
+            services.AddSingleton<DisplayManager>();
+            services.AddSingleton<TrayContext>();
+        }
+    }
 }

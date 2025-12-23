@@ -17,7 +17,7 @@ namespace OLED_Customizer.Core
         private readonly MediaService _mediaService;
         
         private readonly ClockRenderer _clockRenderer;
-        private readonly TextRenderer _textRenderer;
+        private readonly Utils.TextRenderer _textRenderer;
         
         private bool _running;
         private Task? _loopTask;
@@ -40,7 +40,7 @@ namespace OLED_Customizer.Core
             
             _config = new AppConfig(); // TODO: Inject or Load
             _clockRenderer = new ClockRenderer();
-            _textRenderer = new TextRenderer(fontSize: 12);
+            _textRenderer = new Utils.TextRenderer(fontSize: 12);
         }
 
         public void Start()
